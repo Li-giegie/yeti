@@ -1,3 +1,3 @@
-module github.com/Li-egiegie/yeti
+module github.com/Li-giegie/yeti
 
 go 1.18

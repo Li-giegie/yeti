@@ -1,4 +1,4 @@
-package client
+package yeti
 
 import (
 	"bytes"

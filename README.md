@@ -7,16 +7,16 @@ A Go HTTP client library with a fluent Builder pattern.
 ## Install
 
 ```bash
-go get github.com/Li-egiegie/yeti
+go get github.com/Li-giegie/yeti
 ```
 
 ## Quick Start
 
 ```go
-import "github.com/your/module/yeti/client"
+import "github.com/Li-giegie/yeti"
 
 // Create client
-c := client.NewClient()
+c := yeti.NewClient()
 
 // Send GET request
 var result MyStruct
@@ -35,9 +35,7 @@ c.Get().
 Main entry point, created via `NewClient()`.
 
 ```go
-c := client.NewClient(
-    client.WithTimeout(30 * time.Second),
-)
+c := yeti.NewClient()
 ```
 
 Supports hook methods to intercept requests/responses:
@@ -48,7 +46,7 @@ Supports hook methods to intercept requests/responses:
 
 ### Requester
 
-Obtained via `client.R()` or shortcut methods (`Get()`, `Post()`, `Put()`, `Patch()`, `Delete()`, etc.).
+Obtained via `yeti.R()` or shortcut methods (`Get()`, `Post()`, `Put()`, `Patch()`, `Delete()`, etc.).
 
 Builder methods:
 
@@ -91,10 +89,10 @@ Returned by `DoResponse()`, provides response handling:
 Enable debug logging via context:
 
 ```go
-ctx := context.WithValue(context.TODO(), client.ANNE_DEBUG, true)
+ctx := context.WithValue(context.TODO(), yeti.ANNE_DEBUG, true)
 // Or enable separately
-ctx := context.WithValue(context.TODO(), client.ANNE_REQUEST_DEBUG, true)
-ctx := context.WithValue(context.TODO(), client.ANNE_RESPONSE_DEBUG, true)
+ctx := context.WithValue(context.TODO(), yeti.ANNE_REQUEST_DEBUG, true)
+ctx := context.WithValue(context.TODO(), yeti.ANNE_RESPONSE_DEBUG, true)
 
 // Use DoDebug() shorthand
 resp, err := requester.DoDebug(ctx)
@@ -131,17 +129,17 @@ c.Post().
 ### Custom HTTP Client
 
 ```go
-c := client.NewClient()
+c := yeti.NewClient()
 c.Client = &http.Client{Timeout: 10 * time.Second}
 ```
 
 ### Using Hooks
 
 ```go
-c := client.NewClient()
+c := yeti.NewClient()
 
 // Add auth header before request
-c.AddBeforeRequest(func(r *client.Requester) error {
+c.AddBeforeRequest(func(r *yeti.Requester) error {
     r.SetHeader("Authorization", "Bearer token")
     return nil
 })

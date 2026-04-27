@@ -1,4 +1,4 @@
-package client
+package yeti
 
 import (
 	"bytes"
@@ -584,17 +584,4 @@ func (b *bodyBuffer) Close() error {
 		os.Remove(b.file.Name())
 	}
 	return nil
-}
-
-func TestBodyBuffer(t *testing.T) {
-	rc := newBodyBuffer(bytes.NewBufferString("NewBufferString"), 4)
-	b := make([]byte, 4)
-	for {
-		n, err := rc.Read(b)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		fmt.Println(string(b[:n]))
-	}
 }

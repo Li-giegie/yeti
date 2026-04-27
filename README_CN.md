@@ -5,16 +5,16 @@ Go 语言 HTTP 客户端库，采用流畅的构建器（Builder）模式。
 ## 安装
 
 ```bash
-go get github.com/Li-egiegie/yeti
+go get github.com/Li-giegie/yeti
 ```
 
 ## 快速开始
 
 ```go
-import "github.com/your/module/yeti/client"
+import "github.com/Li-giegie/yeti"
 
 // 创建客户端
-c := client.NewClient()
+c := yeti.NewClient()
 
 // 发送 GET 请求
 var result MyStruct
@@ -33,9 +33,7 @@ c.Get().
 主入口点，通过 `NewClient()` 创建。
 
 ```go
-c := client.NewClient(
-    client.WithTimeout(30 * time.Second),
-)
+c := yeti.NewClient()
 ```
 
 支持以下钩子方法拦截请求/响应：
@@ -46,7 +44,7 @@ c := client.NewClient(
 
 ### Requester
 
-通过 `client.R()` 或快捷方法（`Get()`、`Post()`、`Put()`、`Patch()`、`Delete()` 等）获取。
+通过 `yeti.R()` 或快捷方法（`Get()`、`Post()`、`Put()`、`Patch()`、`Delete()` 等）获取。
 
 支持的构建方法：
 
@@ -89,10 +87,10 @@ c := client.NewClient(
 通过 context 启用调试日志：
 
 ```go
-ctx := context.WithValue(context.TODO(), client.ANNE_DEBUG, true)
+ctx := context.WithValue(context.TODO(), yeti.ANNE_DEBUG, true)
 // 或分别启用
-ctx := context.WithValue(context.TODO(), client.ANNE_REQUEST_DEBUG, true)
-ctx := context.WithValue(context.TODO(), client.ANNE_RESPONSE_DEBUG, true)
+ctx := context.WithValue(context.TODO(), yeti.ANNE_REQUEST_DEBUG, true)
+ctx := context.WithValue(context.TODO(), yeti.ANNE_RESPONSE_DEBUG, true)
 
 // 使用 DoDebug() 快捷方法
 resp, err := requester.DoDebug(ctx)
@@ -129,17 +127,17 @@ c.Post().
 ### 自定义 HTTP 客户端
 
 ```go
-c := client.NewClient()
+c := yeti.NewClient()
 c.Client = &http.Client{Timeout: 10 * time.Second}
 ```
 
 ### 使用钩子
 
 ```go
-c := client.NewClient()
+c := yeti.NewClient()
 
 // 请求前添加认证头
-c.AddBeforeRequest(func(r *client.Requester) error {
+c.AddBeforeRequest(func(r *yeti.Requester) error {
     r.SetHeader("Authorization", "Bearer token")
     return nil
 })
