@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -509,7 +508,7 @@ func (r *Response) EqStatusCode(code int) *Response {
 		return r
 	}
 	if r.StatusCode != code {
-		r.Err = errors.New("status code not match")
+		r.Err = fmt.Errorf("statusCode %d not match statusText %s", r.StatusCode, r.Status)
 	}
 	return r
 }
