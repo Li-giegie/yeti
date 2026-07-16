@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"testing"
@@ -350,39 +351,6 @@ func TestResponseXML(t *testing.T) {
 	}
 }
 
-func TestToString(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   any
-		wantOk  bool
-		wantVal string
-	}{
-		{"string", "hello", true, "hello"},
-		{"int", 42, true, "42"},
-		{"int64", int64(1234567890), true, "1234567890"},
-		{"float64", 3.14, true, "3.14"},
-		{"bool true", true, true, "true"},
-		{"bool false", false, true, "false"},
-		{"[]byte", []byte("test"), true, "test"},
-		{"nil", nil, false, ""},
-		{"pointer to string", func() any { s := "ptr"; return &s }(), true, "ptr"},
-		{"pointer to int", func() any { i := 99; return &i }(), true, "99"},
-		{"unsupported type", struct{}{}, false, ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := toString(tt.input)
-			if ok != tt.wantOk {
-				t.Errorf("toString() ok = %v, want %v", ok, tt.wantOk)
-			}
-			if ok && got != tt.wantVal {
-				t.Errorf("toString() = %v, want %v", got, tt.wantVal)
-			}
-		})
-	}
-}
-
 func TestRequesterAddQueryAny(t *testing.T) {
 	client := NewClient()
 	r := client.R().AddQueryAny("key", 123)
@@ -584,4 +552,67 @@ func (b *bodyBuffer) Close() error {
 		os.Remove(b.file.Name())
 	}
 	return nil
+}
+
+func TestBindQuery(t *testing.T) {
+	client := NewClient(func(client *Client) {
+		client.AddBeforeRequest(func(requester *Requester) error {
+			requester.URL = "http://example.com"
+			return nil
+		})
+	})
+	type Stu struct {
+		Int    int     `query:"int"`
+		String string  `query:"string"`
+		Bool   bool    `query:"bool"`
+		Float  float64 `query:"float"`
+	}
+	type StuP struct {
+		Int    *int     `query:"int"`
+		String *string  `query:"string"`
+		Bool   *bool    `query:"bool"`
+		Float  *float64 `query:"float"`
+	}
+	for _, a := range []any{
+		map[string]any{"int": 1, "string": "string", "bool": true, "float": 3.14},
+		&map[string]any{"int": New(1), "string": New("string"), "bool": New(true), "float": New(3.14)},
+		Stu{
+			Int:    1,
+			String: "string",
+			Bool:   true,
+			Float:  3.14,
+		},
+		&StuP{
+			Int:    New(1),
+			String: New("string"),
+			Bool:   New(true),
+			Float:  New(3.14),
+		},
+		&StuP{
+			Int:    New(1),
+			String: New("string"),
+		},
+		struct {
+			StuP
+		}{
+			StuP{
+				Int:    New(2),
+				String: New("abc"),
+				Bool:   New(false),
+				Float:  New(3.1415),
+			},
+		},
+	} {
+		req, err := client.Post().BindQuery(a).Build(context.TODO())
+		if err != nil {
+			t.Errorf("BindQuery() failed: %v", err)
+			return
+		}
+		data, err := httputil.DumpRequest(req, true)
+		if err != nil {
+			t.Errorf("BindQuery() failed: %v", err)
+			return
+		}
+		println(string(data))
+	}
 }

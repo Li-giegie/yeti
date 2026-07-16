@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 )
 
@@ -23,6 +23,7 @@ const (
 	ANNE_DEBUG          = "ANNE_DEBUG"
 	ANNE_REQUEST_DEBUG  = "ANNE_REQUEST_DEBUG"
 	ANNE_RESPONSE_DEBUG = "ANNE_RESPONSE_DEBUG"
+	BIND_QUERY_TAG      = "query"
 )
 
 var (
@@ -49,6 +50,7 @@ type Client struct {
 	BeforeRequest []func(*Requester) error
 	AfterRequest  []func(*http.Request) error
 	AfterResponse []func(*http.Response) error
+	QueryTag      string
 }
 
 func (c *Client) AddBeforeRequest(fn func(*Requester) error) {
@@ -168,11 +170,24 @@ func (b *Requester) AddPath(p string) *Requester {
 	return b
 }
 
-func (b *Requester) AddQuery(key, value string) *Requester {
+func (b *Requester) AddPathF(format string, a ...any) *Requester {
 	if b.Err != nil {
 		return b
 	}
-	b.Query.Set(key, value)
+	p := fmt.Sprintf(format, a...)
+	if len(p) > 0 {
+		b.Paths = append(b.Paths, p)
+	}
+	return b
+}
+
+func (b *Requester) AddQuery(key string, value ...string) *Requester {
+	if b.Err != nil {
+		return b
+	}
+	for _, v := range value {
+		b.Query.Add(key, v)
+	}
 	return b
 }
 
@@ -180,39 +195,61 @@ func (b *Requester) AddQueryAny(key string, value any) *Requester {
 	if b.Err != nil {
 		return b
 	}
-	v, ok := toString(value)
-	if !ok {
-		b.Err = fmt.Errorf("AddQueryAny err: key %s type %t unsupper", key, value)
+	vals, err := toString(value)
+	if err != nil {
+		b.Err = errors.Join(fmt.Errorf("AddQueryAny err: key %s type %t unsupper", key, value), err)
 		return b
 	}
-	return b.AddQuery(key, v)
+	return b.AddQuery(key, vals...)
 }
 
-func (b *Requester) SetHeader(key string, value string) *Requester {
+func (b *Requester) SetQuery(key string, value ...string) *Requester {
 	if b.Err != nil {
 		return b
 	}
-	b.Header.Set(key, value)
-	return b
+	b.Header.Del(key)
+	return b.AddQuery(key, value...)
+}
+
+func (b *Requester) SetQueryAny(key string, value any) *Requester {
+	if b.Err != nil {
+		return b
+	}
+	vals, err := toString(value)
+	if err != nil {
+		b.Err = errors.Join(fmt.Errorf("AddQueryAny err: key %s type %t unsupper", key, value), err)
+		return b
+	}
+	return b.SetQuery(key, vals...)
+}
+
+func (b *Requester) SetHeader(key string, value ...string) *Requester {
+	if b.Err != nil {
+		return b
+	}
+	b.Header.Del(key)
+	return b.AddHeader(key, value...)
 }
 
 func (b *Requester) SetHeaderAny(key string, value any) *Requester {
 	if b.Err != nil {
 		return b
 	}
-	v, ok := toString(value)
-	if !ok {
-		b.Err = fmt.Errorf("SetHeaderAny err: key %s type %t unsupper", key, value)
+	v, err := toString(value)
+	if err != nil {
+		b.Err = errors.Join(fmt.Errorf("SetHeaderAny err: key %s type %t unsupper", key, value), err)
 		return b
 	}
-	return b.SetHeader(key, v)
+	return b.SetHeader(key, v...)
 }
 
-func (b *Requester) AddHeader(key string, value string) *Requester {
+func (b *Requester) AddHeader(key string, value ...string) *Requester {
 	if b.Err != nil {
 		return b
 	}
-	b.Header.Add(key, value)
+	for _, s := range value {
+		b.Header.Add(key, s)
+	}
 	return b
 }
 
@@ -220,12 +257,78 @@ func (b *Requester) AddHeaderAny(key string, value any) *Requester {
 	if b.Err != nil {
 		return b
 	}
-	v, ok := toString(value)
-	if !ok {
-		b.Err = fmt.Errorf("AddHeaderAny err: key %s type %t unsupper", key, value)
+	v, err := toString(value)
+	if err != nil {
+		b.Err = errors.Join(fmt.Errorf("AddHeaderAny err: key %s type %t unsupper", key, value), err)
 		return b
 	}
-	return b.AddHeader(key, v)
+	return b.AddHeader(key, v...)
+}
+
+// BindQuery 支持从 map、struct 类型绑定到Query参数
+func (b *Requester) BindQuery(a any) *Requester {
+	if b.Err != nil {
+		return b
+	}
+	rv := reflect.ValueOf(a)
+	if !rv.IsValid() {
+		b.Err = errors.New("BindQuery: invalid argument")
+		return b
+	}
+	switch rv.Kind() {
+	case reflect.Ptr:
+		if rv.IsNil() {
+			return b
+		}
+		return b.BindQuery(rv.Elem().Interface())
+	case reflect.Struct:
+		tagName := BIND_QUERY_TAG
+		if len(b.client.QueryTag) > 0 {
+			tagName = b.client.QueryTag
+		}
+		for i := 0; i < rv.NumField(); i++ {
+			ft := rv.Type().Field(i)
+			if !ft.IsExported() {
+				continue
+			}
+			tag := ft.Tag.Get(tagName)
+			if len(tag) == 0 {
+				tag = ft.Name
+			}
+			if tag == "-" {
+				continue
+			}
+			if ft.Anonymous {
+				b.BindQuery(rv.Field(i).Interface())
+				continue
+			}
+			fv := rv.Field(i)
+			res, err := toString(fv)
+			if err != nil {
+				b.Err = errors.Join(errors.New("BindQuery field invalid"), err)
+				return b
+			}
+			b.SetQuery(tag, res...)
+		}
+		return b
+	case reflect.Map:
+		for _, key := range rv.MapKeys() {
+			if key.Kind() != reflect.String {
+				b.Err = errors.New("BindQuery map key It must be string type")
+				return b
+			}
+			res, err := toString(rv.MapIndex(key))
+			if err != nil {
+				b.Err = errors.Join(errors.New("BindQuery map value invalid"), err)
+				return b
+			}
+			b.SetQuery(key.String(), res...)
+		}
+		return b
+	default:
+		b.Err = fmt.Errorf("unsupported type: %T", a)
+		return b
+	}
 }
 
 func (b *Requester) SetBody(contentType string, body io.Reader) *Requester {
@@ -265,12 +368,15 @@ func (b *Requester) SetBodyFormMap(mForm map[string]any) *Requester {
 	}
 	var form = make(url.Values)
 	for k, val := range mForm {
-		v, ok := toString(val)
-		if !ok {
-			b.Err = fmt.Errorf("SetBodyFormMap err: key %s type %t unsupper", k, val)
+		v, err := toString(val)
+		if err != nil {
+			b.Err = errors.Join(fmt.Errorf("SetBodyFormMap err: key %s type %t unsupper", k, val), err)
 			return b
 		}
-		form.Set(k, v)
+		form.Del(k)
+		for _, s := range v {
+			form.Add(k, s)
+		}
 	}
 	return b.SetBodyForm(form)
 }
@@ -305,10 +411,10 @@ func (b *Requester) SetBodyMultipartForm(m map[string]any) *Requester {
 	if b.Err != nil {
 		return b
 	}
-	fields := make(map[string]string)
+	fields := make(map[string][]string)
 	files := make(map[string]FileReader)
 	for k, val := range m {
-		if v, ok := toString(val); ok {
+		if v, err := toString(val); err == nil {
 			fields[k] = v
 			continue
 		}
@@ -332,10 +438,12 @@ func (b *Requester) SetBodyMultipartForm(m map[string]any) *Requester {
 	if len(files) == 0 {
 		buf := bytes.NewBuffer(nil)
 		form := multipart.NewWriter(buf)
-		for k, v := range fields {
-			if err := form.WriteField(k, v); err != nil {
-				b.Err = fmt.Errorf("field %s set error: %v", k, err)
-				return b
+		for k, vs := range fields {
+			for _, v := range vs {
+				if err := form.WriteField(k, v); err != nil {
+					b.Err = fmt.Errorf("field %s set error: %v", k, err)
+					return b
+				}
 			}
 		}
 		if err := form.Close(); err != nil {
@@ -347,11 +455,13 @@ func (b *Requester) SetBodyMultipartForm(m map[string]any) *Requester {
 	pr, pw := io.Pipe()
 	writer := multipart.NewWriter(pw)
 	go func() {
-		for k, v := range fields {
-			if err := writer.WriteField(k, v); err != nil {
-				b.Err = fmt.Errorf("field %s set error: %v", k, err)
-				pw.CloseWithError(err)
-				return
+		for k, vs := range fields {
+			for _, v := range vs {
+				if err := writer.WriteField(k, v); err != nil {
+					b.Err = fmt.Errorf("field %s set error: %v", k, err)
+					pw.CloseWithError(err)
+					return
+				}
 			}
 		}
 		for k, v := range files {
@@ -554,96 +664,4 @@ func (b *Requester) Reset() *Requester {
 	b.Header = make(http.Header)
 	b.Body = nil
 	return b
-}
-
-func toString(a any) (string, bool) {
-	if a == nil {
-		return "", false
-	}
-	// 先尝试类型断言
-	switch v := a.(type) {
-	case string:
-		return v, true
-	case int:
-		return strconv.Itoa(v), true
-	case int8:
-		return strconv.FormatInt(int64(v), 10), true
-	case int16:
-		return strconv.FormatInt(int64(v), 10), true
-	case int32:
-		return strconv.FormatInt(int64(v), 10), true
-	case int64:
-		return strconv.FormatInt(v, 10), true
-	case uint:
-		return strconv.FormatUint(uint64(v), 10), true
-	case uint8:
-		return strconv.FormatUint(uint64(v), 10), true
-	case uint16:
-		return strconv.FormatUint(uint64(v), 10), true
-	case uint32:
-		return strconv.FormatUint(uint64(v), 10), true
-	case uint64:
-		return strconv.FormatUint(v, 10), true
-	case float32:
-		return strconv.FormatFloat(float64(v), 'f', -1, 64), true
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64), true
-	case bool:
-		return strconv.FormatBool(v), true
-	case []byte:
-		return string(v), true
-	// 指针类型断言
-	case *string:
-		return *v, true
-	case *int:
-		return strconv.Itoa(*v), true
-	case *int8:
-		return strconv.FormatInt(int64(*v), 10), true
-	case *int16:
-		return strconv.FormatInt(int64(*v), 10), true
-	case *int32:
-		return strconv.FormatInt(int64(*v), 10), true
-	case *int64:
-		return strconv.FormatInt(*v, 10), true
-	case *uint:
-		return strconv.FormatUint(uint64(*v), 10), true
-	case *uint8:
-		return strconv.FormatUint(uint64(*v), 10), true
-	case *uint16:
-		return strconv.FormatUint(uint64(*v), 10), true
-	case *uint32:
-		return strconv.FormatUint(uint64(*v), 10), true
-	case *uint64:
-		return strconv.FormatUint(*v, 10), true
-	case *float32:
-		return strconv.FormatFloat(float64(*v), 'f', -1, 64), true
-	case *float64:
-		return strconv.FormatFloat(*v, 'f', -1, 64), true
-	case *bool:
-		return strconv.FormatBool(*v), true
-	default:
-		// 使用反射处理自定义类型和指针
-		rv := reflect.ValueOf(a)
-		kind := rv.Kind()
-
-		// 如果是指针，解引用后递归处理
-		if kind == reflect.Ptr {
-			return toString(rv.Elem().Interface())
-		}
-
-		// 如果是自定义类型别名，通过反射获取底层值并转换
-		switch kind {
-		case reflect.String:
-			return rv.String(), true
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			return strconv.FormatInt(rv.Int(), 10), true
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			return strconv.FormatUint(rv.Uint(), 10), true
-		case reflect.Float32, reflect.Float64:
-			return strconv.FormatFloat(rv.Float(), 'f', -1, 64), true
-		case reflect.Bool:
-			return strconv.FormatBool(rv.Bool()), true
-		}
-		return "", false
-	}
 }
