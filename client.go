@@ -197,7 +197,7 @@ func (b *Requester) AddQueryAny(key string, value any) *Requester {
 	}
 	vals, err := toString(value)
 	if err != nil {
-		b.Err = errors.Join(fmt.Errorf("AddQueryAny err: key %s type %t unsupper", key, value), err)
+		b.Err = fmt.Errorf("AddQueryAny err: key %s type %t unsupper err %v", key, value, err)
 		return b
 	}
 	return b.AddQuery(key, vals...)
@@ -217,7 +217,7 @@ func (b *Requester) SetQueryAny(key string, value any) *Requester {
 	}
 	vals, err := toString(value)
 	if err != nil {
-		b.Err = errors.Join(fmt.Errorf("AddQueryAny err: key %s type %t unsupper", key, value), err)
+		b.Err = fmt.Errorf("SetQueryAny err: key %s type %t unsupper err %v", key, value, err)
 		return b
 	}
 	return b.SetQuery(key, vals...)
@@ -237,7 +237,7 @@ func (b *Requester) SetHeaderAny(key string, value any) *Requester {
 	}
 	v, err := toString(value)
 	if err != nil {
-		b.Err = errors.Join(fmt.Errorf("SetHeaderAny err: key %s type %t unsupper", key, value), err)
+		b.Err = fmt.Errorf("SetHeaderAny err: key %s type %t unsupper err %v", key, value, err)
 		return b
 	}
 	return b.SetHeader(key, v...)
@@ -259,7 +259,7 @@ func (b *Requester) AddHeaderAny(key string, value any) *Requester {
 	}
 	v, err := toString(value)
 	if err != nil {
-		b.Err = errors.Join(fmt.Errorf("AddHeaderAny err: key %s type %t unsupper", key, value), err)
+		b.Err = fmt.Errorf("AddHeaderAny err: key %s type %t unsupper err %v", key, value, err)
 		return b
 	}
 	return b.AddHeader(key, v...)
@@ -305,7 +305,7 @@ func (b *Requester) BindQuery(a any) *Requester {
 			fv := rv.Field(i)
 			res, err := toString(fv)
 			if err != nil {
-				b.Err = errors.Join(errors.New("BindQuery field invalid"), err)
+				b.Err = fmt.Errorf("BindQuery field %s type %t unsupper err %v", ft.Name, fv.Interface(), err)
 				return b
 			}
 			b.SetQuery(tag, res...)
@@ -319,7 +319,7 @@ func (b *Requester) BindQuery(a any) *Requester {
 			}
 			res, err := toString(rv.MapIndex(key))
 			if err != nil {
-				b.Err = errors.Join(errors.New("BindQuery map value invalid"), err)
+				b.Err = fmt.Errorf("BindQuery map value invalid: key %s, err %v", key.String(), err)
 				return b
 			}
 			b.SetQuery(key.String(), res...)
@@ -370,7 +370,7 @@ func (b *Requester) SetBodyFormMap(mForm map[string]any) *Requester {
 	for k, val := range mForm {
 		v, err := toString(val)
 		if err != nil {
-			b.Err = errors.Join(fmt.Errorf("SetBodyFormMap err: key %s type %t unsupper", k, val), err)
+			b.Err = fmt.Errorf("SetBodyFormMap err: key %s type %t unsupper err %v", k, val, err)
 			return b
 		}
 		form.Del(k)
