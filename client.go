@@ -642,18 +642,22 @@ func (b *Requester) DoResponse(ctx context.Context) *Response {
 		return &Response{Err: b.Err}
 	}
 	resp, err := b.Do(ctx)
-	if err != nil {
-		return &Response{Err: b.Err}
+	result := new(Response)
+	result.Err = err
+	if resp != nil {
+		result.StatusCode = resp.StatusCode
+		result.Status = resp.Status
+		result.Header = resp.Header
+		defer resp.Body.Close()
+		data, dErr := io.ReadAll(resp.Body)
+		if dErr != nil && err != nil {
+			result.Err = fmt.Errorf("%v read response body: %w", err, dErr)
+		} else if dErr != nil {
+			result.Err = dErr
+		}
+		result.Body = data
 	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	return &Response{
-		Err:        err,
-		Status:     resp.Status,
-		StatusCode: resp.StatusCode,
-		Header:     resp.Header,
-		Body:       data,
-	}
+	return result
 }
 
 // Reset reset Err、Method、URL、Header、Body
